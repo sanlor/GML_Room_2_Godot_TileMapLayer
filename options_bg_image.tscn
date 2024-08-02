@@ -1,0 +1,32 @@
+[gd_scene load_steps=2 format=3 uid="uid://by21n03ae7gav"]
+
+[ext_resource type="Script" path="res://options_bg_image.gd" id="1_3haso"]
+
+[node name="options_bg_image" type="HBoxContainer"]
+script = ExtResource("1_3haso")
+
+[node name="Label" type="Label" parent="."]
+custom_minimum_size = Vector2(500, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "No bg selected."
+autowrap_mode = 3
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 2
+size_flags_horizontal = 10
+text = "Load BG"
+
+[node name="load_bg" type="FileDialog" parent="."]
+auto_translate_mode = 1
+title = "Open a File"
+initial_position = 1
+size = Vector2i(300, 300)
+ok_button_text = "Open"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.png", "*.jpg", "*.jpeg", "*.bmp")
+use_native_dialog = true
+
+[connection signal="pressed" from="Button" to="." method="_on_button_pressed"]
+[connection signal="file_selected" from="load_bg" to="." method="_on_load_bg_file_selected"]

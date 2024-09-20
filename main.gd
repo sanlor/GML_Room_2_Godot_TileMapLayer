@@ -25,10 +25,14 @@ var has_bg := false
 var room_settings_gml 			:= {}
 var room_instances_gml 			: Array[Dictionary] = [] 
 var room_tiles_gml 				: Array[Dictionary] = []
+var room_layers_gml				: Array[String]		= [] # "-1000000"
 var room_view_gml 				: Array[Dictionary] = []
 var room_background_gml 		: Array[Dictionary] = []
 
-var my_tilemap : TileMapLayer
+
+#var my_tilemap : TileMapLayer
+var tilemap_root : Node2D
+var tileset : TileSet # used to save tilesets, save to disk
 
 func _ready() -> void:
 	pass # Replace with function body.
@@ -80,9 +84,17 @@ func parse_room_gmx():
 				room_settings_gml[write_text_to] = str_to_var( parser.get_node_data() )
 				write_text_to = ""
 
-			
+	check_room_tile_layers()
 	populate_room_data()
 	has_room = true
+	
+func check_room_tile_layers():
+	for tile in room_tiles_gml:
+		var depth : String = str( tile["depth"] )
+		if room_layers_gml.has( depth ):
+			continue
+		else:
+			room_layers_gml.append( depth )
 	
 func populate_room_data():
 	for data in room_data.get_children():
@@ -90,6 +102,7 @@ func populate_room_data():
 	
 	var rsize = Vector2( room_settings_gml["width"], room_settings_gml["height"] )
 	create_data_label( "Room size", str(rsize) )
+	create_data_label( "Room layers", str( room_layers_gml.size() ) )
 	
 	var bgName := []
 	for bg in room_tiles_gml:
@@ -171,7 +184,8 @@ func _on_gen_tilemap_pressed() -> void:
 		bg_index[ img_name ] = bg_index.size()
 		tilesetatlassource.resource_name = img_name
 	
-	var tileset := TileSet.new()
+	#var tileset := TileSet.new()
+	tileset = TileSet.new()
 	
 	# set the cell size
 	tileset.tile_size = Vector2i( 16, 16 ) ## TEMP, i think.
@@ -182,8 +196,14 @@ func _on_gen_tilemap_pressed() -> void:
 	
 	print( tileset.get_source_count() )
 	
-	my_tilemap = TileMapLayer.new()
-	my_tilemap.tile_set = tileset
+	var layer_index := {}
+	for depth : String in room_layers_gml:
+	#my_tilemap = TileMapLayer.new()
+	#my_tilemap.tile_set = tileset
+		var _tilemaplayer 			:= TileMapLayer.new()
+		_tilemaplayer.tile_set 		= tileset
+		_tilemaplayer.name 			= "layer " + depth
+		layer_index[depth] 			= _tilemaplayer
 	
 	for c in tilemap_container.get_children():
 		c.queue_free()
@@ -194,25 +214,32 @@ func _on_gen_tilemap_pressed() -> void:
 		var pos_in_tilemap 		:= Vector2i( int(tile["x"]), 	int(tile["y"]) ) / 16
 		var pos_in_bg 			:= Vector2i( int(tile["xo"]), 	int(tile["yo"]) ) / 16
 		var tile_name 			: String = tile["bgName"]
+		var _my_tilemap			: TileMapLayer = layer_index[ tile["depth"] ]
+		
 		if tile["scaleX"] == "1" and tile["scaleX"] == "1": # the tile is not streched, treat it as a pattern or a single tile.
 			
 			if tile["w"] == "16" and tile["h"] == "16": # is a single unstreched tile
-				my_tilemap.set_cell(pos_in_tilemap, bg_index[ tile_name ], pos_in_bg)
+				_my_tilemap.set_cell(pos_in_tilemap, bg_index[ tile_name ], pos_in_bg)
 				
 			else: # is a pattern of lots of tiles
 				var tile_size 			:= Vector2i( int(tile["w"]), int(tile["h"]) ) / 16
 				for x in tile_size.x:
 					for y in tile_size.y:
-						my_tilemap.set_cell( pos_in_tilemap + Vector2i( x, y ), bg_index[ tile_name ], pos_in_bg + Vector2i( x, y ) )
+						
+						_my_tilemap.set_cell( pos_in_tilemap + Vector2i( x, y ), bg_index[ tile_name ], pos_in_bg + Vector2i( x, y ) )
 						
 		else: # Is a streched single tile.
 			var tile_scale 			:= Vector2i( int(tile["scaleX"]), int(tile["scaleY"]) )
 			for x in tile_scale.x:
 				for y in tile_scale.y:
-					my_tilemap.set_cell( pos_in_tilemap + Vector2i( x, y ), bg_index[ tile_name ], pos_in_bg )
-			
-			
-	tilemap_container.add_child( my_tilemap )
+					_my_tilemap.set_cell( pos_in_tilemap + Vector2i( x, y ), bg_index[ tile_name ], pos_in_bg )
+					
+	tilemap_root = Node2D.new()
+	for layer in layer_index.values():
+		tilemap_root.add_child( layer, true )
+		
+	tilemap_container.add_child( tilemap_root )
+	
 	print( "Tilemap gen finished! ", Time.get_ticks_msec() - time)
 	time = Time.get_ticks_msec()
 	print ( "Creating objects.")
@@ -232,20 +259,22 @@ func _on_gen_tilemap_pressed() -> void:
 		placeholder.set_meta("inst_name", 	obj_inst_name)
 		placeholder.set_meta("scale", 		obj_scale)
 		
-		my_tilemap.add_child( placeholder )
+		tilemap_root.add_child( placeholder )
 		index += 1
 	
-	print( "Objects created: %s . " % str( my_tilemap.get_child_count() ), Time.get_ticks_msec() - time )
+	print( "Objects created: %s . " % str( tilemap_root.get_child_count() ), Time.get_ticks_msec() - time )
 	save_tilemap.disabled = false
 	
 
 func _on_save_tilemap_pressed() -> void:
+	var time := Time.get_ticks_msec()
+	print("Saving...")
 	if selected_room.is_empty():
 		breakpoint
 	var file_array := selected_room.split( "\\", false )
 	var file_name : String = file_array[-1].trim_suffix(".room.gmx")
 	
-	var res_tileset := my_tilemap.tile_set
+	var res_tileset := tileset
 	
 	for i in res_tileset.get_source_count():
 		var tilesetatlassource : TileSetAtlasSource = res_tileset.get_source( i )
@@ -256,9 +285,12 @@ func _on_save_tilemap_pressed() -> void:
 		res_tileset.add_source( load("res://%s.tres" % tilesetatlassource.resource_name), i )
 	
 	var scene = PackedScene.new()
-	for c in my_tilemap.get_children(): # save children to disk
-		c.set_owner(my_tilemap)
-	scene.pack( my_tilemap )
-	my_tilemap.name = file_name
+	for c in tilemap_root.get_children(): # save children to disk
+		c.set_owner(tilemap_root)
+	tilemap_root.name = file_name
+	scene.pack( tilemap_root )
 	ResourceSaver.save(scene, "res://%s.tscn" % file_name)
+	print( "Objects saved at res://%s.tscn" % file_name )
+	print( "saving took: %s msecs. " % str(Time.get_ticks_msec() - time) )
+	OS.shell_open (ProjectSettings.globalize_path("res://") )
 	
